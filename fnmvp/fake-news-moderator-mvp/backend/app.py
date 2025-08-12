@@ -261,6 +261,45 @@ def explain(req: ExplainRequest):
     )
     return ExplainResponse(explanation=msg)
 
+class ProbsResponse(BaseModel):
+    content: Optional[float] = None
+    context: Optional[float] = None
+    nli: Optional[float] = None
+    final: Optional[float] = None
+
+@app.post("/probs", response_model=ProbsResponse)
+def probs(req: ClassifyRequest):
+    text = req.text or (extract_text_from_url(req.url) if req.url else "")
+    if not text:
+        return ProbsResponse()
+    out = ProbsResponse()
+    try:
+        probs = []
+        # content
+        if ART_CONTENT is not None and ART_TOKENIZER is not None:
+            import torch
+            enc = ART_TOKENIZER([text], return_tensors="pt", padding=True, truncation=True, max_length=256)
+            with torch.no_grad():
+                logits = ART_CONTENT(**enc).logits
+                p = torch.softmax(logits, dim=1)[0,1].item()
+            out.content = float(p)
+            probs.append(p)
+        # context (no real context json provided at classify-time)
+        if ART_CONTEXT_MODEL is not None and ART_CONTEXT_SCALER is not None:
+            x = _np.asarray([_ctx_features_from_json("")], dtype=float)
+            xs = ART_CONTEXT_SCALER.transform(x)
+            p = ART_CONTEXT_MODEL.predict_proba(xs)[:,1][0]
+            out.context = float(p)
+            probs.append(p)
+        # meta
+        if ART_META is not None and probs:
+            import numpy as _np
+            X = _np.asarray(probs).reshape(1,-1)
+            out.final = float(ART_META.predict_proba(X)[:,1][0])
+    except Exception:
+        pass
+    return out
+
 @app.post("/classify", response_model=ClassifyResponse)
 def classify(req: ClassifyRequest):
     text = req.text or (extract_text_from_url(req.url) if req.url else "")
@@ -311,4 +350,7 @@ def classify(req: ClassifyRequest):
 @app.get("/healthz")
 def healthz():
     has_model = bool(ART_META is not None)
-    return {"ok": True, "model_loaded": has_model}
+    version = None
+    if ART_CFG and isinstance(ART_CFG, dict):
+        version = ART_CFG.get('version')
+    return {"ok": True, "model_loaded": has_model, "version": version}

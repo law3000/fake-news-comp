@@ -545,6 +545,7 @@ def train_and_evaluate(args):
 
     # Save artifacts
     print("Saving artifacts...")
+    from datetime import datetime
     # Content model
     content = models[0]
     content_dir = models_dir / 'content'
@@ -564,17 +565,26 @@ def train_and_evaluate(args):
     except Exception as e:
         print(f"Warning: failed to save context artifacts: {e}")
 
-    # Meta-learner
+    # Meta-learner and config
     try:
         joblib.dump(meta_learner, models_dir / 'meta_learner.joblib')
-        # Simple config of which branches were used
+        # Save config with versioning and training meta
         cfg = {
             'used_nli': (not getattr(args, 'no_nli', False)),
             'fast_mode': FAST_MODE,
+            'folds': folds,
+            'trained_at': datetime.utcnow().isoformat() + 'Z',
+            'version': datetime.utcnow().strftime('%Y%m%d%H%M%S'),
+            'feature_order': ['content', 'context'] + (['nli'] if not getattr(args, 'no_nli', False) else []),
+            'train_size': int(len(train_dataset)),
+            'models': {
+                'content_model': getattr(content, 'model_name', 'unknown'),
+                'context_model': type(context.model).__name__
+            }
         }
         (models_dir / 'config.json').write_text(json.dumps(cfg))
     except Exception as e:
-        print(f"Warning: failed to save meta-learner: {e}")
+        print(f"Warning: failed to save meta-learner/config: {e}")
 
     # Evaluate on training data (out-of-fold predictions)
     train_preds = meta_learner.predict(oof_predictions)
