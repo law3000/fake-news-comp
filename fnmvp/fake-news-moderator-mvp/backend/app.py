@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 import requests
 import joblib
 from pathlib import Path
+import numpy as _np
 
 load_dotenv()
 app = FastAPI(title="Fake News Moderator MVP (Lite)")
@@ -143,6 +144,20 @@ def load_verified_chunks() -> List[Dict[str, Any]]:
 
 VERIFIED_CHUNKS = load_verified_chunks()
 
+# Optional embedding model for better retrieval (RAG)
+EMB_MODEL = None
+VERIFIED_EMB = None  # normalized embeddings (n, d)
+try:
+    from sentence_transformers import SentenceTransformer
+    if VERIFIED_CHUNKS:
+        EMB_MODEL = SentenceTransformer(os.getenv("SENTENCE_EMBEDDING_MODEL", "all-MiniLM-L6-v2"))
+        texts = [c["text"] for c in VERIFIED_CHUNKS]
+        embs = EMB_MODEL.encode(texts, convert_to_numpy=True, normalize_embeddings=True)
+        VERIFIED_EMB = embs  # already normalized
+except Exception:
+    EMB_MODEL = None
+    VERIFIED_EMB = None
+
 def _score(query: str, text: str) -> float:
     q = set(_tokenize(query))
     t = set(_tokenize(text))
@@ -158,8 +173,24 @@ class RetrieveResponse(BaseModel):
 
 @app.post("/retrieve", response_model=RetrieveResponse)
 def retrieve(req: RetrieveRequest):
-    if not VERIFIED_CHUNKS: 
+    if not VERIFIED_CHUNKS:
         return RetrieveResponse(snippets=[])
+
+    # If embedding index available, use cosine similarity
+    if VERIFIED_EMB is not None and EMB_MODEL is not None:
+        try:
+            q_emb = EMB_MODEL.encode([req.query], convert_to_numpy=True, normalize_embeddings=True)[0]
+            sims = (VERIFIED_EMB @ q_emb)  # dot product since normalized
+            idxs = _np.argsort(-sims)[:max(1, req.k)]
+            out = []
+            for i in idxs:
+                c = VERIFIED_CHUNKS[int(i)]
+                out.append({"source": c["source"], "text": c["text"], "score": float(sims[int(i)])})
+            return RetrieveResponse(snippets=out)
+        except Exception:
+            pass
+
+    # Fallback to token overlap
     scored = sorted(
         ({"source": c["source"], "text": c["text"], "score": _score(req.query, c["text"])} for c in VERIFIED_CHUNKS),
         key=lambda x: x["score"],
@@ -178,15 +209,55 @@ class ExplainResponse(BaseModel):
 
 @app.post("/explain", response_model=ExplainResponse)
 def explain(req: ExplainRequest):
+    # If no snippets provided, try to retrieve from verified sources
+    snippets = req.snippets
+    if not snippets and VERIFIED_CHUNKS:
+        try:
+            tmp = retrieve(RetrieveRequest(query=req.article_text, k=4))
+            snippets = tmp.snippets
+        except Exception:
+            snippets = []
+
     bullets = []
-    for s in req.snippets[:4]:
+    for s in snippets[:4]:
         bullets.append(f"- Source: {s.get('source','?')} | Score: {s.get('score',0):.3f}\\n  Snippet: {s.get('text','')[:240]}")
     joined = "\\n".join(bullets) if bullets else "- (No supporting sources found in the local folder.)"
+
+    # Try LLM (OpenAI HTTP) if OPENAI_API_KEY present
+    api_key = os.getenv("OPENAI_API_KEY")
+    if api_key:
+        try:
+            import requests as _rq
+            system = "You are a helpful moderation assistant that produces short, factual explanations."
+            user = (
+                f"Article text:\n{req.article_text[:1600]}\n\n"
+                f"Classifier label: {req.classifier_label} (confidence={req.classifier_confidence:.2f})\n"
+                f"Top evidence from verified notes:\n{joined}\n\n"
+                f"Explain in 5-8 concise bullet points why the article may be {req.classifier_label}."
+            )
+            payload = {
+                "model": os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini"),
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user}
+                ],
+                "temperature": 0.2,
+            }
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+            resp = _rq.post("https://api.openai.com/v1/chat/completions", json=payload, headers=headers, timeout=30)
+            if resp.ok:
+                data = resp.json()
+                content = data["choices"][0]["message"]["content"].strip()
+                return ExplainResponse(explanation=content)
+        except Exception:
+            pass
+
+    # Fallback template explanation
     msg = (
         f"Classification: {req.classifier_label} ({req.classifier_confidence*100:.1f}% confidence)\\n"
         f"Why flagged: This article may conflict with your verified notes.\\n"
         f"Top evidence:\\n{joined}\\n"
-        f"Note: Lite explainer. Swap in your LLM later for richer reasoning."
+        f"Note: Lite explainer. Set OPENAI_API_KEY to enable LLM explanations."
     )
     return ExplainResponse(explanation=msg)
 
