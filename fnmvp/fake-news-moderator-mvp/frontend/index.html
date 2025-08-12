@@ -20,6 +20,7 @@ function App(){
   const [input,setInput]=React.useState(""); const [isURL,setIsURL]=React.useState(false);
   const [result,setResult]=React.useState(null); const [snippets,setSnippets]=React.useState([]);
   const [explanation,setExplanation]=React.useState(""); const [loading,setLoading]=React.useState(false);
+  const [probs,setProbs]=React.useState(null);
   const [health,setHealth]=React.useState({ok:false,model_loaded:false,version:null});
   React.useEffect(()=>{(async()=>{try{const r=await fetch(API_BASE+"/healthz"); const j=await r.json(); setHealth(j);}catch{}})();},[]);
   const classify=async()=>{setLoading(true);setResult(null);setSnippets([]);setExplanation("");
@@ -31,6 +32,7 @@ function App(){
         const r=await fetch(API_BASE+"/retrieve",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({query:isURL?input:input,k:4})});
         const j=await r.json(); setSnippets(j.snippets||[]);
       }
+      try{const pr=await fetch(API_BASE+"/probs",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}); const pj=await pr.json(); setProbs(pj);}catch{}
     }catch(e){alert("Error: "+e.message);}finally{setLoading(false);}};
   const genExplanation=async()=>{try{
       const resp=await fetch(API_BASE+"/explain",{method:"POST",headers:{"Content-Type":"application/json"},
@@ -55,6 +57,15 @@ Explanation:\n${explanation}`; await navigator.clipboard.writeText(text); alert(
         <span className={"px-3 py-1 rounded-full text-white "+(result.label==="Fake"?"bg-red-600":result.label==="Real"?"bg-green-600":"bg-gray-500")}>
           {result.label} {typeof result.confidence==="number"?`(${(result.confidence*100).toFixed(1)}%)`:""}
         </span>{result.rationale&&<span className="text-sm text-gray-600">• {result.rationale}</span>}
+      </div>)}
+      {probs&&(<div className="mt-3 text-sm text-gray-700">
+        <h3 className="font-semibold text-gray-800 mb-1">Model probabilities</h3>
+        <div className="grid grid-cols-2 gap-2">
+          <div>Content: {probs?.content!=null?Number(probs.content).toFixed(3):'-'}</div>
+          <div>Context: {probs?.context!=null?Number(probs.context).toFixed(3):'-'}</div>
+          {('nli' in (probs||{})) && <div>NLI: {probs?.nli!=null?Number(probs.nli).toFixed(3):'-'}</div>}
+          <div>Final: {probs?.final!=null?Number(probs.final).toFixed(3):'-'}</div>
+        </div>
       </div>)}
       {snippets?.length>0&&(<div><h3 className="font-semibold text-gray-800 mb-2">Supporting sources</h3>
         <ul className="space-y-2">{snippets.map((s,i)=>(<li key={i} className="border rounded-xl p-3">
