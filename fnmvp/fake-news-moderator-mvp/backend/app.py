@@ -1,4 +1,4 @@
-﻿import os, glob, re
+﻿import os, glob, re, time, logging
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,10 +9,33 @@ import requests
 import joblib
 from pathlib import Path
 import numpy as _np
+from logging.handlers import RotatingFileHandler
+from starlette.middleware.base import BaseHTTPMiddleware
+from collections import OrderedDict
 
 load_dotenv()
+# Setup rotating file logging
+LOGS_DIR = Path(__file__).parent / 'logs'
+LOGS_DIR.mkdir(parents=True, exist_ok=True)
+_logger = logging.getLogger("app")
+if not _logger.handlers:
+    _handler = RotatingFileHandler(LOGS_DIR / 'app.log', maxBytes=1_000_000, backupCount=3, encoding='utf-8')
+    _handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
+    _logger.setLevel(logging.INFO)
+    _logger.addHandler(_handler)
+_logger.info(".env loaded: OPENAI=%s SENT_EMB=%s", bool(os.getenv('OPENAI_API_KEY')), os.getenv('SENTENCE_EMBEDDING_MODEL','all-MiniLM-L6-v2'))
+
 app = FastAPI(title="Fake News Moderator MVP (Lite)")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
+# Request logging middleware
+async def _log_mw(request, call_next):
+    start = time.perf_counter()
+    resp = await call_next(request)
+    dur_ms = (time.perf_counter() - start) * 1000
+    _logger.info("%s %s -> %s in %.1fms", request.method, request.url.path, getattr(resp,'status_code', '?'), dur_ms)
+    return resp
+app.add_middleware(BaseHTTPMiddleware, dispatch=_log_mw)
 
 # Optional trained model artifacts (set if available)
 MODELS_DIR = Path(__file__).parent / 'models'
@@ -161,6 +184,10 @@ def load_verified_chunks() -> List[Dict[str, Any]]:
 
 VERIFIED_CHUNKS = load_verified_chunks()
 
+# Simple in-memory LRU cache for retrieval results
+RETRIEVE_CACHE: OrderedDict[str, List[Dict[str, Any]]] = OrderedDict()
+RETRIEVE_CACHE_MAX = 100
+
 # Optional embedding model for better retrieval (RAG)
 EMB_MODEL = None
 VERIFIED_EMB = None  # normalized embeddings (n, d)
@@ -193,6 +220,13 @@ def retrieve(req: RetrieveRequest):
     if not VERIFIED_CHUNKS:
         return RetrieveResponse(snippets=[])
 
+    # Cache check
+    key = f"{req.query}|{req.k}"
+    if key in RETRIEVE_CACHE:
+        val = RETRIEVE_CACHE.pop(key)
+        RETRIEVE_CACHE[key] = val
+        return RetrieveResponse(snippets=val)
+
     # If embedding index available, use cosine similarity
     if VERIFIED_EMB is not None and EMB_MODEL is not None:
         try:
@@ -203,6 +237,9 @@ def retrieve(req: RetrieveRequest):
             for i in idxs:
                 c = VERIFIED_CHUNKS[int(i)]
                 out.append({"source": c["source"], "text": c["text"], "score": float(sims[int(i)])})
+            RETRIEVE_CACHE[key] = out
+            if len(RETRIEVE_CACHE) > RETRIEVE_CACHE_MAX:
+                RETRIEVE_CACHE.popitem(last=False)
             return RetrieveResponse(snippets=out)
         except Exception:
             pass
@@ -213,7 +250,11 @@ def retrieve(req: RetrieveRequest):
         key=lambda x: x["score"],
         reverse=True
     )
-    return RetrieveResponse(snippets=[s for s in scored[:max(1, req.k)]])
+    out = [s for s in scored[:max(1, req.k)]]
+    RETRIEVE_CACHE[key] = out
+    if len(RETRIEVE_CACHE) > RETRIEVE_CACHE_MAX:
+        RETRIEVE_CACHE.popitem(last=False)
+    return RetrieveResponse(snippets=out)
 
 class ExplainRequest(BaseModel):
     article_text: str
