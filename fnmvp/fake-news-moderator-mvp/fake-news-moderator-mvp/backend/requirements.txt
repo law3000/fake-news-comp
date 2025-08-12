@@ -1,0 +1,6 @@
+﻿fastapi
+uvicorn[standard]
+pydantic>=2
+python-dotenv
+requests
+beautifulsoup4

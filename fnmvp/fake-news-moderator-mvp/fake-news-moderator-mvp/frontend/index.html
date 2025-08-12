@@ -1,0 +1,61 @@
+﻿<!doctype html>
+<html lang="en"><head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Fake News Moderator MVP</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head><body class="bg-gray-50">
+<div id="root" class="min-h-screen p-6"></div>
+<script type="text/babel">
+const API_BASE="http://127.0.0.1:8000"//(location.hostname==="localhost"||location.hostname==="127.0.0.1")?"http://localhost:8000":window.location.origin.replace(/:\d+$/,"\:8000");
+function App(){
+  const [input,setInput]=React.useState(""); const [isURL,setIsURL]=React.useState(false);
+  const [result,setResult]=React.useState(null); const [snippets,setSnippets]=React.useState([]);
+  const [explanation,setExplanation]=React.useState(""); const [loading,setLoading]=React.useState(false);
+  const classify=async()=>{setLoading(true);setResult(null);setSnippets([]);setExplanation("");
+    try{const payload=isURL?{url:input}:{text:input};
+      console.log(API_BASE)
+      const resp=await fetch(API_BASE+"/classify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+      const data=await resp.json(); setResult(data);
+      if((data.label||"").toLowerCase()==="fake"){
+        const r=await fetch(API_BASE+"/retrieve",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({query:isURL?input:input,k:4})});
+        const j=await r.json(); setSnippets(j.snippets||[]);
+      }
+    }catch(e){alert("Error: "+e.message);}finally{setLoading(false);}};
+  const genExplanation=async()=>{try{
+      const resp=await fetch(API_BASE+"/explain",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({article_text:input,classifier_label:result?.label||"Unknown",classifier_confidence:result?.confidence||0,snippets})});
+      const data=await resp.json(); setExplanation(data.explanation||"");
+    }catch(e){alert("Explain error: "+e.message);}};
+  const copyExplanation=async()=>{const text=`Classification: ${result?.label} (${((result?.confidence*100)||0).toFixed(1)}%)
+Sources:\n${(snippets||[]).map(s=>`- [${s.source}] score=${(s.score||0).toFixed(3)}\n  ${(s.text||"").slice(0,220)}`).join("\n")}
+Explanation:\n${explanation}`; await navigator.clipboard.writeText(text); alert("Copied to clipboard!");};
+  return (<div className="max-w-3xl mx-auto">
+    <header className="mb-6"><h1 className="text-3xl font-bold text-gray-900">Fake News Moderator</h1>
+      <p className="text-gray-600">Paste article text or a URL → classify → (if Fake) retrieve snippets → generate explanation.</p></header>
+    <div className="bg-white rounded-2xl shadow p-4 space-y-4">
+      <div className="flex items-center gap-3">
+        <select className="border rounded-xl px-3 py-2" value={isURL?"url":"text"} onChange={e=>setIsURL(e.target.value==="url")}><option value="text">Text</option><option value="url">URL</option></select>
+        <input className="flex-1 border rounded-xl px-4 py-2" placeholder={isURL?"https://example.com/article":"Paste or type article text..."} value={input} onChange={e=>setInput(e.target.value)}/>
+        <button onClick={classify} disabled={loading||!input.trim()} className="px-4 py-2 rounded-xl bg-blue-600 text-white disabled:opacity-50">{loading?"Analyzing...":"Analyze"}</button>
+      </div>
+      {result&&(<div className="flex items-center gap-3">
+        <span className={"px-3 py-1 rounded-full text-white "+(result.label==="Fake"?"bg-red-600":result.label==="Real"?"bg-green-600":"bg-gray-500")}>
+          {result.label} {typeof result.confidence==="number"?`(${(result.confidence*100).toFixed(1)}%)`:""}
+        </span>{result.rationale&&<span className="text-sm text-gray-600">• {result.rationale}</span>}
+      </div>)}
+      {snippets?.length>0&&(<div><h3 className="font-semibold text-gray-800 mb-2">Supporting sources</h3>
+        <ul className="space-y-2">{snippets.map((s,i)=>(<li key={i} className="border rounded-xl p-3">
+          <div className="text-sm text-gray-700"><b>Source:</b> {s.source} • <b>Score:</b> {(s.score||0).toFixed(3)}</div>
+          <div className="text-gray-900 mt-1">{s.text}</div></li>))}</ul></div>)}
+      <div className="flex gap-3">
+        <button onClick={genExplanation} disabled={!result} className="px-4 py-2 rounded-xl border">Generate Explanation</button>
+        <button onClick={copyExplanation} disabled={!explanation} className="px-4 py-2 rounded-xl bg-gray-900 text-white disabled:opacity-50">Copy to Report</button>
+      </div>
+      {explanation&&(<pre className="bg-gray-50 rounded-xl p-3 whitespace-pre-wrap text-sm">{explanation}</pre>)}
+    </div></div>);
+}
+const root=ReactDOM.createRoot(document.getElementById("root")); root.render(<App />);
+</script></body></html>

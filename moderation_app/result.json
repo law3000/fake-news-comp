@@ -1,0 +1,49 @@
+﻿{
+    "label":  "fake",
+    "confidence":  0.78,
+    "explanation":  {
+                        "summary":  "Classified as fake (0.78).",
+                        "reasoning":  "Signals + verified sources.",
+                        "limitations":  "Automated; may miss nuance.",
+                        "citations":  [
+                                          {
+                                              "source":  "VerifiedCorpus",
+                                              "title":  "seed1.txt",
+                                              "url":  null,
+                                              "snippet":  "ï»¿This is a verified snippet about vaccines and public health."
+                                          },
+                                          {
+                                              "source":  "VerifiedCorpus",
+                                              "title":  "seed2.txt",
+                                              "url":  null,
+                                              "snippet":  "ï»¿Reuters/WHO style factual paragraph for testing retrieval."
+                                          },
+                                          {
+                                              "source":  "VerifiedCorpus",
+                                              "title":  "seed3.txt",
+                                              "url":  null,
+                                              "snippet":  "ï»¿AP Fact Check example snippet for FAISS indexing."
+                                          }
+                                      ]
+                    },
+    "snippets":  [
+                     {
+                         "source":  "VerifiedCorpus",
+                         "title":  "seed1.txt",
+                         "url":  null,
+                         "snippet":  "ï»¿This is a verified snippet about vaccines and public health."
+                     },
+                     {
+                         "source":  "VerifiedCorpus",
+                         "title":  "seed2.txt",
+                         "url":  null,
+                         "snippet":  "ï»¿Reuters/WHO style factual paragraph for testing retrieval."
+                     },
+                     {
+                         "source":  "VerifiedCorpus",
+                         "title":  "seed3.txt",
+                         "url":  null,
+                         "snippet":  "ï»¿AP Fact Check example snippet for FAISS indexing."
+                     }
+                 ]
+}

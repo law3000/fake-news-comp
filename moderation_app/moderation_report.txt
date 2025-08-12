@@ -1,0 +1,13 @@
+﻿Label: fake  (confidence 0.78)
+Summary:   Classified as fake (0.78).
+Reasoning: Signals + verified sources.
+Limits:    Automated; may miss nuance.
+
+
+Citations:
+- VerifiedCorpus: seed1.txt 
+  ï»¿This is a verified snippet about vaccines and public health.
+- VerifiedCorpus: seed2.txt 
+  ï»¿Reuters/WHO style factual paragraph for testing retrieval.
+- VerifiedCorpus: seed3.txt 
+  ï»¿AP Fact Check example snippet for FAISS indexing.
