@@ -23,7 +23,12 @@ Install backend deps and start both servers:
 
 ## Environment variables
 
-Place secrets in backend/.env (gitignored). Example:
+- Example files:
+  - .env.example (root)
+  - fnmvp/fake-news-moderator-mvp/backend/.env.example
+- Place secrets in fnmvp/fake-news-moderator-mvp/backend/.env (gitignored)
+
+Example backend/.env:
 
 OPENAI_API_KEY=sk-...
 OPENAI_CHAT_MODEL=gpt-4o-mini

@@ -175,9 +175,10 @@ def load_verified_chunks() -> List[Dict[str, Any]]:
                 for it in (data.get("organic") or [])[:5]:
                     title = it.get("title", "")
                     snippet = it.get("snippet", "")
+                    link = it.get("link", "")
                     if snippet:
                         for ch in split_into_chunks(snippet, size=120):
-                            out.append({"source": title or it.get("link","web"), "text": ch})
+                            out.append({"source": title or link or "web", "text": ch, "url": link})
     except Exception:
         pass
     return out
