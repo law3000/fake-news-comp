@@ -6,10 +6,54 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 import requests
+import joblib
+from pathlib import Path
 
 load_dotenv()
 app = FastAPI(title="Fake News Moderator MVP (Lite)")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
+# Optional trained model artifacts (set if available)
+MODELS_DIR = Path(__file__).parent / 'models'
+CONTENT_DIR = MODELS_DIR / 'content'
+ART_CONTENT = None
+ART_TOKENIZER = None
+ART_CONTEXT_MODEL = None
+ART_CONTEXT_SCALER = None
+ART_META = None
+ART_CFG = None
+
+try:
+    if MODELS_DIR.exists():
+        # Load meta-learner
+        meta_p = MODELS_DIR / 'meta_learner.joblib'
+        if meta_p.exists():
+            ART_META = joblib.load(meta_p)
+        # Load context artifacts
+        ctx_m = MODELS_DIR / 'context_model.joblib'
+        if ctx_m.exists():
+            ART_CONTEXT_MODEL = joblib.load(ctx_m)
+        ctx_s = MODELS_DIR / 'context_scaler.joblib'
+        if ctx_s.exists():
+            ART_CONTEXT_SCALER = joblib.load(ctx_s)
+        # Load content model/tokenizer if transformers available
+        if CONTENT_DIR.exists():
+            try:
+                from transformers import AutoTokenizer, AutoModelForSequenceClassification
+                ART_TOKENIZER = AutoTokenizer.from_pretrained(str(CONTENT_DIR))
+                ART_CONTENT = AutoModelForSequenceClassification.from_pretrained(str(CONTENT_DIR))
+                ART_CONTENT.eval()
+            except Exception:
+                ART_TOKENIZER = None
+                ART_CONTENT = None
+        # Load config
+        cfg_p = MODELS_DIR / 'config.json'
+        if cfg_p.exists():
+            import json as _json
+            ART_CFG = _json.loads(cfg_p.read_text())
+except Exception:
+    # Ignore load errors; we'll fall back to heuristic
+    pass
 
 FAKE_MARKERS = [
     "breaking!!!","shocking","what they dont want you to know","cure in 24 hours",
@@ -42,6 +86,22 @@ def extract_text_from_url(url: str) -> str:
         return soup.get_text(" ", strip=True)
     except Exception:
         return ""
+
+def _ctx_features_from_json(s: str):
+    try:
+        import json
+        d = json.loads(s) if s and s.strip() else {}
+    except Exception:
+        d = {}
+    return [
+        d.get("share_count", 0),
+        d.get("unique_users", 0),
+        d.get("avg_followers", 0),
+        d.get("burstiness", 0.0),
+        d.get("sentiment_score", 0.0),
+        d.get("engagement_rate", 0.0),
+    ]
+
 
 def heuristic_classify(text: str) -> Dict[str, Any]:
     t = (text or "").lower()
@@ -135,8 +195,49 @@ def classify(req: ClassifyRequest):
     text = req.text or (extract_text_from_url(req.url) if req.url else "")
     if not text:
         return ClassifyResponse(label="Unknown", confidence=0.0, rationale="No text provided or URL extraction failed.")
+
+    # If trained artifacts are present, use them; otherwise fallback
+    try:
+        used_any = False
+        feats = []
+        probs = []
+
+        # Content branch
+        if ART_CONTENT is not None and ART_TOKENIZER is not None:
+            try:
+                import torch
+                enc = ART_TOKENIZER([text], return_tensors="pt", padding=True, truncation=True, max_length=256)
+                with torch.no_grad():
+                    logits = ART_CONTENT(**enc).logits
+                    p_fake = torch.softmax(logits, dim=1)[0,1].item()
+                probs.append(p_fake)
+                used_any = True
+            except Exception:
+                pass
+
+        # Context branch (empty context for now)
+        if ART_CONTEXT_MODEL is not None and ART_CONTEXT_SCALER is not None:
+            import numpy as _np
+            x = _np.asarray([_ctx_features_from_json("")], dtype=float)
+            xs = ART_CONTEXT_SCALER.transform(x)
+            p_ctx = ART_CONTEXT_MODEL.predict_proba(xs)[:,1][0]
+            probs.append(p_ctx)
+            used_any = True
+
+        # Meta-learner combine if available
+        if used_any and ART_META is not None and probs:
+            import numpy as _np
+            X = _np.asarray(probs).reshape(1,-1)
+            p = float(ART_META.predict_proba(X)[:,1][0])
+            label = "Fake" if p >= 0.5 else "Real"
+            return ClassifyResponse(label=label, confidence=p, rationale="Stacked model")
+    except Exception:
+        pass
+
+    # Fallback heuristic
     return ClassifyResponse(**heuristic_classify(text))
 
 @app.get("/healthz")
 def healthz():
-    return {"ok": True}
+    has_model = bool(ART_META is not None)
+    return {"ok": True, "model_loaded": has_model}
