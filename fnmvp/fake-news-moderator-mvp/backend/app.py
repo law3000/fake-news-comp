@@ -140,6 +140,23 @@ def load_verified_chunks() -> List[Dict[str, Any]]:
                 out.append({"source": os.path.basename(path), "text": ch})
         except Exception:
             pass
+    # Optional: include a few web results via Serper (if SERPER_API_KEY provided)
+    try:
+        key = os.getenv("SERPER_API_KEY")
+        if key:
+            import requests as _rq
+            q = os.getenv("SERPER_BOOTSTRAP_QUERY", "site:reuters.com OR site:apnews.com fact check")
+            resp = _rq.post("https://google.serper.dev/search", json={"q": q, "num": 5}, headers={"X-API-KEY": key, "Content-Type": "application/json"}, timeout=10)
+            if resp.ok:
+                data = resp.json()
+                for it in (data.get("organic") or [])[:5]:
+                    title = it.get("title", "")
+                    snippet = it.get("snippet", "")
+                    if snippet:
+                        for ch in split_into_chunks(snippet, size=120):
+                            out.append({"source": title or it.get("link","web"), "text": ch})
+    except Exception:
+        pass
     return out
 
 VERIFIED_CHUNKS = load_verified_chunks()
