@@ -9,14 +9,14 @@ def _fallback_explanation(article_text: str, label: str, confidence: float, snip
     for s in snippets[:4]:
         bullets.append(f"- Source: {s.get('source','?')} | Score: {s.get('score',0):.3f}\n  Snippet: {s.get('text','')[:240]}")
     joined = "\n".join(bullets) if bullets else "- (No supporting sources found in the local index.)"
-    myvar =  (
+    lvar = (
         f"Classification: {label} ({confidence*100:.1f}% confidence)\n"
         f"Why flagged: This article may conflict with verified sources in your index.\n"
         f"Top evidence:\n{joined}\n"
         f"Note: Using rule-based fallback explainer. Configure an LLM to improve quality."
     )
-    print(myvar)
-    return myvar
+    print(lvar)
+    return lvar
 
 def generate_explanation(article_text: str, classifier_label: str, classifier_confidence: float, snippets: List[Dict]) -> str:
     # For MVP, always use fallback. To enable LLM, set OPENAI_API_KEY and replace with your LLM call here.
@@ -28,7 +28,7 @@ def generate_explanation(article_text: str, classifier_label: str, classifier_co
     #       prompt = f"""You are a fact-checking assistant..."""
     #       resp = openai.chat.completions.create(...)
     #       return resp.choices[0].message.content.strip()
-    print("i have caled the fucntion")
+    print("i have called the fucntion")
     return _fallback_explanation(article_text, classifier_label, classifier_confidence, snippets)
 
 
