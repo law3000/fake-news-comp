@@ -21,6 +21,16 @@ Install backend deps and start both servers:
    - Backend: http://127.0.0.1:8000 (health: /healthz)
    - Frontend: http://localhost:5500/index.html
 
+## Environment variables
+
+Place secrets in backend/.env (gitignored). Example:
+
+OPENAI_API_KEY=sk-...
+OPENAI_CHAT_MODEL=gpt-4o-mini
+SENTENCE_EMBEDDING_MODEL=all-MiniLM-L6-v2
+SERPER_API_KEY=...
+SERPER_BOOTSTRAP_QUERY=site:reuters.com OR site:apnews.com fact check
+
 ## Train a model (fast mode)
 
 We provide a training script that can save model artifacts used by the API.
