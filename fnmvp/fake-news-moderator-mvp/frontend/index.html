@@ -21,7 +21,7 @@ function App(){
   const [result,setResult]=React.useState(null); const [snippets,setSnippets]=React.useState([]);
   const [explanation,setExplanation]=React.useState(""); const [loading,setLoading]=React.useState(false);
   const [probs,setProbs]=React.useState(null);
-  const [health,setHealth]=React.useState({ok:false,model_loaded:false,version:null});
+  const [health,setHealth]=React.useState({ok:false,model_loaded:false,version:null,features:null});
   React.useEffect(()=>{(async()=>{try{const r=await fetch(API_BASE+"/healthz"); const j=await r.json(); setHealth(j);}catch{}})();},[]);
   const classify=async()=>{setLoading(true);setResult(null);setSnippets([]);setExplanation("");
     try{const payload=isURL?{url:input}:{text:input};
@@ -45,7 +45,7 @@ Explanation:\n${explanation}`; await navigator.clipboard.writeText(text); alert(
   return (<div className="max-w-3xl mx-auto">
     <header className="mb-6"><h1 className="text-3xl font-bold text-gray-900">Fake News Moderator</h1>
       <p className="text-gray-600">Paste article text or a URL → classify → (if Fake) retrieve snippets → generate explanation.</p>
-      <div className="text-xs text-gray-500 mt-1">API: {API_BASE} • Model: {health.model_loaded?('loaded'+(health.version?` v${health.version}`:'')):'not loaded'}</div>
+      <div className="text-xs text-gray-500 mt-1">API: {API_BASE} • Model: {health.model_loaded?('loaded'+(health.version?` v${health.version}`:'')):'not loaded'} • Feat: {(health.features||[]).join(', ')||'-'}</div>
     </header>
     <div className="bg-white rounded-2xl shadow p-4 space-y-4">
       <div className="flex items-center gap-3">
@@ -62,8 +62,8 @@ Explanation:\n${explanation}`; await navigator.clipboard.writeText(text); alert(
         <h3 className="font-semibold text-gray-800 mb-1">Model probabilities</h3>
         <div className="grid grid-cols-2 gap-2">
           <div>Content: {probs?.content!=null?Number(probs.content).toFixed(3):'-'}</div>
-          <div>Context: {probs?.context!=null?Number(probs.context).toFixed(3):'-'}</div>
-          {('nli' in (probs||{})) && <div>NLI: {probs?.nli!=null?Number(probs.nli).toFixed(3):'-'}</div>}
+          {((health.features||[])||[]).includes('context') && <div>Context: {probs?.context!=null?Number(probs.context).toFixed(3):'-'}</div>}
+          {((health.features||[])||[]).includes('nli') && <div>NLI: {probs?.nli!=null?Number(probs.nli).toFixed(3):'-'}</div>}
           <div>Final: {probs?.final!=null?Number(probs.final).toFixed(3):'-'}</div>
         </div>
       </div>)}
@@ -74,6 +74,7 @@ Explanation:\n${explanation}`; await navigator.clipboard.writeText(text); alert(
       <div className="flex gap-3">
         <button onClick={genExplanation} disabled={!result} className="px-4 py-2 rounded-xl border">Generate Explanation</button>
         <button onClick={copyExplanation} disabled={!explanation} className="px-4 py-2 rounded-xl bg-gray-900 text-white disabled:opacity-50">Copy to Report</button>
+        <button onClick={async()=>{try{const r=await fetch(API_BASE+"/rag/rebuild",{method:"POST"}); const j=await r.json(); alert(`RAG rebuilt: ${j.chunks} chunks`);}catch(e){alert("Rebuild failed: "+e.message);}}} className="px-4 py-2 rounded-xl border">Rebuild RAG index</button>
       </div>
       {explanation&&(<pre className="bg-gray-50 rounded-xl p-3 whitespace-pre-wrap text-sm">{explanation}</pre>)}
     </div></div>);
