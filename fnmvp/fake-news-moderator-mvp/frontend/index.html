@@ -74,7 +74,8 @@ Explanation:\n${explanation}`; await navigator.clipboard.writeText(text); alert(
       <div className="flex gap-3">
         <button onClick={genExplanation} disabled={!result} className="px-4 py-2 rounded-xl border">Generate Explanation</button>
         <button onClick={copyExplanation} disabled={!explanation} className="px-4 py-2 rounded-xl bg-gray-900 text-white disabled:opacity-50">Copy to Report</button>
-        <button onClick={async()=>{try{const r=await fetch(API_BASE+"/rag/rebuild",{method:"POST"}); const j=await r.json(); alert(`RAG rebuilt: ${j.chunks} chunks`);}catch(e){alert("Rebuild failed: "+e.message);}}} className="px-4 py-2 rounded-xl border">Rebuild RAG index</button>
+        <button onClick={async()=>{try{const r=await fetch(API_BASE+"/rag/rebuild",{method:"POST"}); const j=await r.json(); alert(`RAG rebuilt: ${j.chunks} chunks`);}catch(e){alert("Rebuild failed: "+e.message);}}} className="px-4 py-2 rounded-xl border">Rebuild RAG</button>
+        <button onClick={async()=>{try{const r=await fetch(API_BASE+"/cache/clear",{method:"POST"}); const j=await r.json(); alert(`Cache cleared. Size=${j.cache.size}`);}catch(e){alert("Cache clear failed: "+e.message);}}} className="px-4 py-2 rounded-xl border">Clear cache</button>
       </div>
       {explanation&&(<pre className="bg-gray-50 rounded-xl p-3 whitespace-pre-wrap text-sm">{explanation}</pre>)}
     </div></div>);

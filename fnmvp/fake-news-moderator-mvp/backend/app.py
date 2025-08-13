@@ -53,6 +53,14 @@ def metrics():
         }
     }
 
+@app.post("/cache/clear")
+def cache_clear():
+    global RETRIEVE_CACHE_HITS, RETRIEVE_CACHE_MISSES
+    RETRIEVE_CACHE.clear()
+    RETRIEVE_CACHE_HITS = 0
+    RETRIEVE_CACHE_MISSES = 0
+    return {"ok": True, "cache": {"size": len(RETRIEVE_CACHE), "cleared": True}}
+
 # Optional trained model artifacts (set if available)
 MODELS_DIR = Path(__file__).parent / 'models'
 CONTENT_DIR = MODELS_DIR / 'content'
