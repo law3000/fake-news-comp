@@ -37,6 +37,22 @@ async def _log_mw(request, call_next):
     return resp
 app.add_middleware(BaseHTTPMiddleware, dispatch=_log_mw)
 
+@app.get("/metrics")
+def metrics():
+    return {
+        "ok": True,
+        "cache": {
+            "size": len(RETRIEVE_CACHE),
+            "hits": RETRIEVE_CACHE_HITS,
+            "misses": RETRIEVE_CACHE_MISSES,
+        },
+        "model": {
+            "loaded": bool(ART_META is not None),
+            "version": ART_CFG.get('version') if ART_CFG else None,
+            "features": ART_CFG.get('feature_order') if ART_CFG else None,
+        }
+    }
+
 # Optional trained model artifacts (set if available)
 MODELS_DIR = Path(__file__).parent / 'models'
 CONTENT_DIR = MODELS_DIR / 'content'
@@ -187,9 +203,10 @@ VERIFIED_CHUNKS = load_verified_chunks()
 
 @app.post("/rag/rebuild")
 def rag_rebuild():
-    global VERIFIED_CHUNKS, VERIFIED_EMB
+    global VERIFIED_CHUNKS, VERIFIED_EMB, RETRIEVE_CACHE, RETRIEVE_CACHE_HITS, RETRIEVE_CACHE_MISSES
     VERIFIED_CHUNKS = load_verified_chunks()
     VERIFIED_EMB = None
+    RETRIEVE_CACHE.clear(); RETRIEVE_CACHE_HITS = 0; RETRIEVE_CACHE_MISSES = 0
     try:
         if VERIFIED_CHUNKS and EMB_MODEL is not None:
             texts = [c["text"] for c in VERIFIED_CHUNKS]
@@ -202,6 +219,8 @@ def rag_rebuild():
 # Simple in-memory LRU cache for retrieval results
 RETRIEVE_CACHE: OrderedDict[str, List[Dict[str, Any]]] = OrderedDict()
 RETRIEVE_CACHE_MAX = 100
+RETRIEVE_CACHE_HITS = 0
+RETRIEVE_CACHE_MISSES = 0
 
 # Optional embedding model for better retrieval (RAG)
 EMB_MODEL = None
@@ -240,7 +259,12 @@ def retrieve(req: RetrieveRequest):
     if key in RETRIEVE_CACHE:
         val = RETRIEVE_CACHE.pop(key)
         RETRIEVE_CACHE[key] = val
+        global RETRIEVE_CACHE_HITS
+        RETRIEVE_CACHE_HITS += 1
         return RetrieveResponse(snippets=val)
+
+    global RETRIEVE_CACHE_MISSES
+    RETRIEVE_CACHE_MISSES += 1
 
     # If embedding index available, use cosine similarity
     if VERIFIED_EMB is not None and EMB_MODEL is not None:
