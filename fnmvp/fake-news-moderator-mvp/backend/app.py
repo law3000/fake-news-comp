@@ -185,6 +185,20 @@ def load_verified_chunks() -> List[Dict[str, Any]]:
 
 VERIFIED_CHUNKS = load_verified_chunks()
 
+@app.post("/rag/rebuild")
+def rag_rebuild():
+    global VERIFIED_CHUNKS, VERIFIED_EMB
+    VERIFIED_CHUNKS = load_verified_chunks()
+    VERIFIED_EMB = None
+    try:
+        if VERIFIED_CHUNKS and EMB_MODEL is not None:
+            texts = [c["text"] for c in VERIFIED_CHUNKS]
+            embs = EMB_MODEL.encode(texts, convert_to_numpy=True, normalize_embeddings=True)
+            VERIFIED_EMB = embs
+    except Exception:
+        pass
+    return {"ok": True, "chunks": len(VERIFIED_CHUNKS)}
+
 # Simple in-memory LRU cache for retrieval results
 RETRIEVE_CACHE: OrderedDict[str, List[Dict[str, Any]]] = OrderedDict()
 RETRIEVE_CACHE_MAX = 100
@@ -333,7 +347,8 @@ def probs(req: ClassifyRequest):
         return ProbsResponse()
     out = ProbsResponse()
     try:
-        probs = []
+        # Build features in the order used for training if available
+        branch_vals = {}
         # content
         if ART_CONTENT is not None and ART_TOKENIZER is not None:
             import torch
@@ -342,18 +357,23 @@ def probs(req: ClassifyRequest):
                 logits = ART_CONTENT(**enc).logits
                 p = torch.softmax(logits, dim=1)[0,1].item()
             out.content = float(p)
-            probs.append(p)
+            branch_vals['content'] = float(p)
         # context (no real context json provided at classify-time)
         if ART_CONTEXT_MODEL is not None and ART_CONTEXT_SCALER is not None:
             x = _np.asarray([_ctx_features_from_json("")], dtype=float)
             xs = ART_CONTEXT_SCALER.transform(x)
             p = ART_CONTEXT_MODEL.predict_proba(xs)[:,1][0]
             out.context = float(p)
-            probs.append(p)
-        # meta
-        if ART_META is not None and probs:
+            branch_vals['context'] = float(p)
+        # nli placeholder if ever enabled in artifacts
+        if ART_CFG and isinstance(ART_CFG, dict) and 'nli' in (ART_CFG.get('feature_order') or []):
+            branch_vals.setdefault('nli', None)
+        # meta using feature_order
+        if ART_META is not None and ART_CFG and isinstance(ART_CFG, dict):
+            order = ART_CFG.get('feature_order') or list(branch_vals.keys())
+            vec = [branch_vals.get(name, 0.0) if branch_vals.get(name) is not None else 0.0 for name in order]
             import numpy as _np
-            X = _np.asarray(probs).reshape(1,-1)
+            X = _np.asarray(vec).reshape(1,-1)
             out.final = float(ART_META.predict_proba(X)[:,1][0])
     except Exception:
         pass
@@ -410,6 +430,8 @@ def classify(req: ClassifyRequest):
 def healthz():
     has_model = bool(ART_META is not None)
     version = None
+    features = None
     if ART_CFG and isinstance(ART_CFG, dict):
         version = ART_CFG.get('version')
-    return {"ok": True, "model_loaded": has_model, "version": version}
+        features = ART_CFG.get('feature_order')
+    return {"ok": True, "model_loaded": has_model, "version": version, "features": features}
