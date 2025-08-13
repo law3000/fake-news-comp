@@ -22,7 +22,8 @@ function App(){
   const [explanation,setExplanation]=React.useState(""); const [loading,setLoading]=React.useState(false);
   const [probs,setProbs]=React.useState(null);
   const [health,setHealth]=React.useState({ok:false,model_loaded:false,version:null,features:null});
-  React.useEffect(()=>{(async()=>{try{const r=await fetch(API_BASE+"/healthz"); const j=await r.json(); setHealth(j);}catch{}})();},[]);
+  const [metrics,setMetrics]=React.useState(null);
+  React.useEffect(()=>{(async()=>{try{const r=await fetch(API_BASE+"/healthz"); const j=await r.json(); setHealth(j);}catch{}})(); (async()=>{try{const r=await fetch(API_BASE+"/metrics"); const j=await r.json(); setMetrics(j);}catch{}})();},[]);
   const classify=async()=>{setLoading(true);setResult(null);setSnippets([]);setExplanation("");
     try{const payload=isURL?{url:input}:{text:input};
       console.log(API_BASE)
@@ -33,6 +34,7 @@ function App(){
         const j=await r.json(); setSnippets(j.snippets||[]);
       }
       try{const pr=await fetch(API_BASE+"/probs",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}); const pj=await pr.json(); setProbs(pj);}catch{}
+      try{const mr=await fetch(API_BASE+"/metrics"); const mj=await mr.json(); setMetrics(mj);}catch{}
     }catch(e){alert("Error: "+e.message);}finally{setLoading(false);}};
   const genExplanation=async()=>{try{
       const resp=await fetch(API_BASE+"/explain",{method:"POST",headers:{"Content-Type":"application/json"},
@@ -45,7 +47,7 @@ Explanation:\n${explanation}`; await navigator.clipboard.writeText(text); alert(
   return (<div className="max-w-3xl mx-auto">
     <header className="mb-6"><h1 className="text-3xl font-bold text-gray-900">Fake News Moderator</h1>
       <p className="text-gray-600">Paste article text or a URL → classify → (if Fake) retrieve snippets → generate explanation.</p>
-      <div className="text-xs text-gray-500 mt-1">API: {API_BASE} • Model: {health.model_loaded?('loaded'+(health.version?` v${health.version}`:'')):'not loaded'} • Feat: {(health.features||[]).join(', ')||'-'}</div>
+      <div className="text-xs text-gray-500 mt-1">API: {API_BASE} • Model: {health.model_loaded?('loaded'+(health.version?` v${health.version}`:'')):'not loaded'} • Feat: {(health.features||[]).join(', ')||'-'} • Cache: size {metrics?.cache?.size ?? '-'} hits {metrics?.cache?.hits ?? '-'}</div>
     </header>
     <div className="bg-white rounded-2xl shadow p-4 space-y-4">
       <div className="flex items-center gap-3">
@@ -74,8 +76,8 @@ Explanation:\n${explanation}`; await navigator.clipboard.writeText(text); alert(
       <div className="flex gap-3">
         <button onClick={genExplanation} disabled={!result} className="px-4 py-2 rounded-xl border">Generate Explanation</button>
         <button onClick={copyExplanation} disabled={!explanation} className="px-4 py-2 rounded-xl bg-gray-900 text-white disabled:opacity-50">Copy to Report</button>
-        <button onClick={async()=>{try{const r=await fetch(API_BASE+"/rag/rebuild",{method:"POST"}); const j=await r.json(); alert(`RAG rebuilt: ${j.chunks} chunks`);}catch(e){alert("Rebuild failed: "+e.message);}}} className="px-4 py-2 rounded-xl border">Rebuild RAG</button>
-        <button onClick={async()=>{try{const r=await fetch(API_BASE+"/cache/clear",{method:"POST"}); const j=await r.json(); alert(`Cache cleared. Size=${j.cache.size}`);}catch(e){alert("Cache clear failed: "+e.message);}}} className="px-4 py-2 rounded-xl border">Clear cache</button>
+        <button onClick={async()=>{try{const r=await fetch(API_BASE+"/rag/rebuild",{method:"POST"}); const j=await r.json(); alert(`RAG rebuilt: ${j.chunks} chunks`); const mr=await fetch(API_BASE+"/metrics"); const mj=await mr.json(); setMetrics(mj);}catch(e){alert("Rebuild failed: "+e.message);}}} className="px-4 py-2 rounded-xl border">Rebuild RAG</button>
+        <button onClick={async()=>{try{const r=await fetch(API_BASE+"/cache/clear",{method:"POST"}); const j=await r.json(); alert(`Cache cleared. Size=${j.cache.size}`); const mr=await fetch(API_BASE+"/metrics"); const mj=await mr.json(); setMetrics(mj);}catch(e){alert("Cache clear failed: "+e.message);}}} className="px-4 py-2 rounded-xl border">Clear cache</button>
       </div>
       {explanation&&(<pre className="bg-gray-50 rounded-xl p-3 whitespace-pre-wrap text-sm">{explanation}</pre>)}
     </div></div>);
