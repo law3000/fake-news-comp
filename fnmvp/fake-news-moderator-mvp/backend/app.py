@@ -256,6 +256,7 @@ class RetrieveRequest(BaseModel):
 
 class RetrieveResponse(BaseModel):
     snippets: List[Dict[str, Any]]
+    cached: Optional[bool] = False
 
 @app.post("/retrieve", response_model=RetrieveResponse)
 def retrieve(req: RetrieveRequest):
@@ -269,7 +270,7 @@ def retrieve(req: RetrieveRequest):
         RETRIEVE_CACHE[key] = val
         global RETRIEVE_CACHE_HITS
         RETRIEVE_CACHE_HITS += 1
-        return RetrieveResponse(snippets=val)
+        return RetrieveResponse(snippets=val, cached=True)
 
     global RETRIEVE_CACHE_MISSES
     RETRIEVE_CACHE_MISSES += 1
@@ -287,7 +288,7 @@ def retrieve(req: RetrieveRequest):
             RETRIEVE_CACHE[key] = out
             if len(RETRIEVE_CACHE) > RETRIEVE_CACHE_MAX:
                 RETRIEVE_CACHE.popitem(last=False)
-            return RetrieveResponse(snippets=out)
+            return RetrieveResponse(snippets=out, cached=False)
         except Exception:
             pass
 
@@ -301,7 +302,7 @@ def retrieve(req: RetrieveRequest):
     RETRIEVE_CACHE[key] = out
     if len(RETRIEVE_CACHE) > RETRIEVE_CACHE_MAX:
         RETRIEVE_CACHE.popitem(last=False)
-    return RetrieveResponse(snippets=out)
+    return RetrieveResponse(snippets=out, cached=False)
 
 class ExplainRequest(BaseModel):
     article_text: str

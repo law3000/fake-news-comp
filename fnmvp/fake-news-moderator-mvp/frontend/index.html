@@ -70,6 +70,7 @@ Explanation:\n${explanation}`; await navigator.clipboard.writeText(text); alert(
         </div>
       </div>)}
       {snippets?.length>0&&(<div><h3 className="font-semibold text-gray-800 mb-2">Supporting sources</h3>
+        {probs?.cached&&(<div className="text-xs text-gray-500 mb-1">From cache</div>)}
         <ul className="space-y-2">{snippets.map((s,i)=>(<li key={i} className="border rounded-xl p-3">
           <div className="text-sm text-gray-700"><b>Source:</b> {s.url? <a className="text-blue-600 underline" href={s.url} target="_blank" rel="noreferrer">{s.source}</a> : s.source} • <b>Score:</b> {(s.score||0).toFixed(3)}</div>
           <div className="text-gray-900 mt-1">{s.text}</div></li>))}</ul></div>)}
